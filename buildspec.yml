@@ -1,0 +1,100 @@
+version: 0.2
+
+# Environment variables injected by CodeBuild project (set in CloudFormation):
+#   STACK_NAME               — CloudFormation stack name
+#   FRONTEND_BUCKET          — S3 bucket for static frontend files
+#   CLOUDFRONT_DISTRIBUTION_ID — for cache invalidation after frontend deploy
+#   ARTIFACTS_BUCKET         — S3 bucket for Lambda zip packages
+#   PAIRINGS_URL             — tournament pairings URL to scrape
+#   GITHUB_OWNER / GITHUB_REPO / CODESTAR_CONNECTION_ARN — pipeline config
+
+phases:
+  install:
+    runtime-versions:
+      python: "3.12"
+    commands:
+      - pip install --upgrade pip --quiet
+
+  pre_build:
+    commands:
+      # Install all dependencies needed for testing
+      - pip install pytest requests beautifulsoup4 boto3 moto --quiet
+
+      # Run unit tests — build fails if any test fails
+      - python -m pytest backend/tests/ -v --tb=short
+
+  build:
+    commands:
+      # ── 1. Package Scraper Lambda ──────────────────────────────────────────
+      - mkdir -p /tmp/scraper_pkg
+      - pip install -r backend/scraper/requirements.txt -t /tmp/scraper_pkg/ --quiet
+      - cp backend/scraper/handler.py      /tmp/scraper_pkg/
+      - cp backend/scraper/scraper.py      /tmp/scraper_pkg/
+      - cp backend/scraper/computation.py  /tmp/scraper_pkg/
+      - cd /tmp/scraper_pkg && zip -r9 "$OLDPWD/scraper.zip" . --quiet && cd "$OLDPWD"
+      - aws s3 cp scraper.zip "s3://${ARTIFACTS_BUCKET}/lambda/scraper.zip"
+
+      # ── 2. Package API Lambda ──────────────────────────────────────────────
+      - mkdir -p /tmp/api_pkg
+      - cp backend/api/handler.py /tmp/api_pkg/
+      - cd /tmp/api_pkg && zip -r9 "$OLDPWD/api.zip" . --quiet && cd "$OLDPWD"
+      - aws s3 cp api.zip "s3://${ARTIFACTS_BUCKET}/lambda/api.zip"
+
+      # ── 3. Deploy / update CloudFormation stack ────────────────────────────
+      - |
+        aws cloudformation deploy \
+          --template-file infrastructure/template.yaml \
+          --stack-name "$STACK_NAME" \
+          --capabilities CAPABILITY_NAMED_IAM \
+          --parameter-overrides \
+            PairingsUrl="$PAIRINGS_URL" \
+            CodeStarConnectionArn="$CODESTAR_CONNECTION_ARN" \
+            GitHubOwner="$GITHUB_OWNER" \
+            GitHubRepo="$GITHUB_REPO" \
+            ArtifactsBucketName="$ARTIFACTS_BUCKET" \
+          --no-fail-on-empty-changeset
+
+      # ── 4. Update Scraper Lambda code ─────────────────────────────────────
+      - |
+        aws lambda update-function-code \
+          --function-name pokemon-id-scraper \
+          --s3-bucket "$ARTIFACTS_BUCKET" \
+          --s3-key lambda/scraper.zip \
+          --no-cli-pager
+      - aws lambda wait function-updated --function-name pokemon-id-scraper
+
+      # ── 5. Update API Lambda code ──────────────────────────────────────────
+      - |
+        aws lambda update-function-code \
+          --function-name pokemon-id-api \
+          --s3-bucket "$ARTIFACTS_BUCKET" \
+          --s3-key lambda/api.zip \
+          --no-cli-pager
+      - aws lambda wait function-updated --function-name pokemon-id-api
+
+      # ── 6. Sync frontend to S3 ────────────────────────────────────────────
+      - |
+        aws s3 sync frontend/ "s3://${FRONTEND_BUCKET}/" \
+          --delete \
+          --cache-control "max-age=300, must-revalidate"
+
+      # ── 7. Invalidate CloudFront cache ────────────────────────────────────
+      - |
+        aws cloudfront create-invalidation \
+          --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+          --paths "/*" \
+          --no-cli-pager
+
+  post_build:
+    commands:
+      - |
+        if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then
+          echo "SUCCESS — stack updated, Lambdas deployed, frontend synced."
+        else
+          echo "FAILURE — check the logs above for details."
+        fi
+
+artifacts:
+  files:
+    - "**/*"
+  discard-paths: no

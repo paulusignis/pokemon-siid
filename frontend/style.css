@@ -1,0 +1,277 @@
+/* -----------------------------------------------------------------------
+   Pokemon TCG ID Analyzer — Styles
+   ----------------------------------------------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #22263a;
+  --border: #2e3347;
+  --text: #e8eaf6;
+  --text-muted: #7b82a8;
+  --accent: #7c4dff;
+  --green: #00c853;
+  --red: #ff5252;
+  --yellow: #ffd740;
+  --radius: 10px;
+  --font: system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+header {
+  padding: 2rem 1.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+header h1 { font-size: 1.75rem; letter-spacing: -0.5px; }
+header .subtitle { color: var(--text-muted); margin-top: 0.4rem; font-size: 0.95rem; }
+
+/* Main */
+main {
+  flex: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 2rem;
+}
+
+/* Controls */
+#controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+button:hover { opacity: 0.85; }
+button:disabled { opacity: 0.45; cursor: default; }
+
+.cache-info { color: var(--text-muted); font-size: 0.85rem; }
+
+/* Banner */
+.banner {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.25rem;
+  font-size: 0.9rem;
+}
+.banner.info    { background: #1a2a4a; border: 1px solid #2a4080; }
+.banner.error   { background: #2a1a1a; border: 1px solid #802a2a; }
+.banner.stale   { background: #2a2a1a; border: 1px solid #807020; }
+.banner.hidden  { display: none; }
+
+/* Loading */
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-muted);
+  padding: 2rem 0;
+}
+.loading.hidden { display: none; }
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Division sections */
+.division {
+  margin-bottom: 2.5rem;
+}
+
+.division-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.division-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.division-badge {
+  font-size: 0.78rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 0.15rem 0.6rem;
+  color: var(--text-muted);
+}
+
+/* Pairing cards */
+.pairings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1rem;
+}
+
+.pairing-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pairing-card.recommend-id {
+  border-color: var(--green);
+  box-shadow: 0 0 0 1px var(--green) inset;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.table-num {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.rec-badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  letter-spacing: 0.5px;
+}
+.rec-badge.WIN { background: #1a3a2a; color: var(--green); }
+.rec-badge.ID  { background: #3a2a1a; color: var(--yellow); }
+
+/* Players */
+.matchup {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.player-info {
+  flex: 1;
+  min-width: 0;
+}
+.player-info.name-side { text-align: left; }
+.player-info.opp-side  { text-align: right; }
+
+.player-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-record {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+
+.vs {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Probability bars */
+.prob-section { }
+
+.prob-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.prob-label {
+  width: 60px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.prob-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.prob-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+.prob-bar-fill.win { background: var(--green); }
+.prob-bar-fill.id  { background: var(--yellow); }
+
+.prob-pct {
+  width: 40px;
+  text-align: right;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.margin-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+
+/* Simulation note */
+.sim-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+/* Footer */
+footer {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Responsive */
+@media (max-width: 500px) {
+  .pairings-grid { grid-template-columns: 1fr; }
+  header h1 { font-size: 1.35rem; }
+}

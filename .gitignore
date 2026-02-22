@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Lambda build artifacts
+*.zip
+/tmp/
+
+# Test output
+.pytest_cache/
+.coverage
+coverage.xml
+test-results.xml
+
+# IDE
+.DS_Store
+.idea/
+.vscode/
+
+# CDK / SAM (not used here, but guard against accidental init)
+cdk.out/
+.aws-sam/

@@ -1,0 +1,542 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Pokemon TCG ID Analyzer — full infrastructure.
+  Frontend on S3+CloudFront, Python Lambda scraper + API,
+  DynamoDB cache, EventBridge schedule, CodePipeline CI/CD from GitHub.
+
+# ============================================================
+# PARAMETERS
+# ============================================================
+Parameters:
+  PairingsUrl:
+    Type: String
+    Default: "https://tabletopvillage.github.io"
+    Description: "URL of the Pokemon TCG pairings page to scrape"
+
+  GitHubOwner:
+    Type: String
+    Description: "GitHub username or organisation that owns the repo"
+
+  GitHubRepo:
+    Type: String
+    Default: "pokemon-id-analyzer"
+
+  GitHubBranch:
+    Type: String
+    Default: "main"
+
+  CodeStarConnectionArn:
+    Type: String
+    Description: >
+      ARN of the CodeStar Connection to GitHub.
+      Create it manually in AWS Console → Developer Tools → Connections,
+      then authorise the GitHub App, and paste the ARN here.
+
+  ArtifactsBucketName:
+    Type: String
+    Description: >
+      Name of the S3 bucket for CodePipeline/CodeBuild artifacts.
+      Create this bucket manually before the first CloudFormation deploy.
+
+  CacheTtlSeconds:
+    Type: Number
+    Default: 300
+    Description: "Seconds before the DynamoDB cache is considered stale"
+
+# ============================================================
+# RESOURCES
+# ============================================================
+Resources:
+
+  # ----------------------------------------------------------
+  # S3 — Frontend bucket
+  # ----------------------------------------------------------
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "pokemon-id-frontend-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+  # ----------------------------------------------------------
+  # DynamoDB — cache table
+  # ----------------------------------------------------------
+  CacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: pokemon-id-cache
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # ----------------------------------------------------------
+  # CloudFront
+  # ----------------------------------------------------------
+  CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "pokemon-id-oac-${AWS::StackName}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        PriceClass: PriceClass_100
+        Comment: "Pokemon TCG ID Analyzer"
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        Origins:
+          # S3 origin for static frontend
+          - Id: S3Frontend
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig: {}
+            OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+          # API Gateway origin for /api/* paths
+          - Id: ApiGateway
+            DomainName: !Select
+              - 2
+              - !Split
+                - "/"
+                - !GetAtt HttpApi.ApiEndpoint
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+        DefaultCacheBehavior:
+          TargetOriginId: S3Frontend
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized managed policy
+          Compress: true
+        CacheBehaviors:
+          - PathPattern: "/api/*"
+            TargetOriginId: ApiGateway
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled managed policy
+            AllowedMethods: [GET, HEAD, OPTIONS]
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+
+  # ----------------------------------------------------------
+  # IAM — Scraper Lambda role
+  # ----------------------------------------------------------
+  ScraperLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "pokemon-id-scraper-role-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ScraperPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                Resource: !GetAtt CacheTable.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/pokemon-id-scraper*"
+
+  # ----------------------------------------------------------
+  # IAM — API Lambda role
+  # ----------------------------------------------------------
+  ApiLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "pokemon-id-api-role-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ApiPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                Resource: !GetAtt CacheTable.Arn
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt ScraperFunction.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/pokemon-id-api*"
+
+  # ----------------------------------------------------------
+  # IAM — CodeBuild role
+  # ----------------------------------------------------------
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "pokemon-id-codebuild-role-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub "arn:aws:s3:::${ArtifactsBucketName}"
+                  - !Sub "arn:aws:s3:::${ArtifactsBucketName}/*"
+                  - !GetAtt FrontendBucket.Arn
+                  - !Sub "${FrontendBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:GetTemplate
+                  - cloudformation:ValidateTemplate
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:GetFunctionConfiguration
+                Resource:
+                  - !GetAtt ScraperFunction.Arn
+                  - !GetAtt ApiFunction.Arn
+              - Effect: Allow
+                Action:
+                  - cloudfront:CreateInvalidation
+                Resource: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !GetAtt ScraperLambdaRole.Arn
+                  - !GetAtt ApiLambdaRole.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # ----------------------------------------------------------
+  # IAM — CodePipeline role
+  # ----------------------------------------------------------
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "pokemon-id-pipeline-role-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PipelinePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub "arn:aws:s3:::${ArtifactsBucketName}"
+                  - !Sub "arn:aws:s3:::${ArtifactsBucketName}/*"
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: !GetAtt BuildProject.Arn
+              - Effect: Allow
+                Action: codestar-connections:UseConnection
+                Resource: !Ref CodeStarConnectionArn
+
+  # ----------------------------------------------------------
+  # Lambda — Scraper function (placeholder code; CodeBuild updates it)
+  # ----------------------------------------------------------
+  ScraperFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: pokemon-id-scraper
+      Runtime: python3.12
+      Handler: handler.lambda_handler
+      Role: !GetAtt ScraperLambdaRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        # Minimal placeholder — CodeBuild will update-function-code after first deploy
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {"status": "not_deployed_yet"}
+      Environment:
+        Variables:
+          PAIRINGS_URL: !Ref PairingsUrl
+          CACHE_TABLE_NAME: !Ref CacheTable
+          CACHE_TTL_SECONDS: !Sub "${CacheTtlSeconds}"
+
+  ScraperLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ScraperFunction}"
+      RetentionInDays: 7
+
+  # ----------------------------------------------------------
+  # Lambda — API function (placeholder code; CodeBuild updates it)
+  # ----------------------------------------------------------
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: pokemon-id-api
+      Runtime: python3.12
+      Handler: handler.lambda_handler
+      Role: !GetAtt ApiLambdaRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          import json
+          def lambda_handler(event, context):
+              return {"statusCode": 503, "body": json.dumps({"error": "not_deployed_yet"})}
+      Environment:
+        Variables:
+          CACHE_TABLE_NAME: !Ref CacheTable
+          SCRAPER_FUNCTION_NAME: !Ref ScraperFunction
+          CACHE_TTL_SECONDS: !Sub "${CacheTtlSeconds}"
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ApiFunction}"
+      RetentionInDays: 7
+
+  # ----------------------------------------------------------
+  # API Gateway v2 (HTTP API)
+  # ----------------------------------------------------------
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: pokemon-id-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  ApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /api/analysis"
+      Target: !Sub "integrations/${ApiIntegration}"
+
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: "$default"
+      AutoDeploy: true
+
+  ApiLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ApiFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  # ----------------------------------------------------------
+  # EventBridge — scrape every 5 minutes
+  # ----------------------------------------------------------
+  ScraperScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "pokemon-id-scrape-schedule-${AWS::StackName}"
+      Description: "Trigger scraper Lambda every 5 minutes"
+      ScheduleExpression: "rate(5 minutes)"
+      State: ENABLED
+      Targets:
+        - Id: ScraperLambdaTarget
+          Arn: !GetAtt ScraperFunction.Arn
+
+  ScraperSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ScraperFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScraperScheduleRule.Arn
+
+  # ----------------------------------------------------------
+  # CodeBuild — build + deploy project
+  # ----------------------------------------------------------
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "pokemon-id-build-${AWS::StackName}"
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/standard:7.0
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables:
+          - Name: STACK_NAME
+            Value: !Ref AWS::StackName
+          - Name: FRONTEND_BUCKET
+            Value: !Ref FrontendBucket
+          - Name: CLOUDFRONT_DISTRIBUTION_ID
+            Value: !Ref CloudFrontDistribution
+          - Name: ARTIFACTS_BUCKET
+            Value: !Ref ArtifactsBucketName
+          - Name: PAIRINGS_URL
+            Value: !Ref PairingsUrl
+          - Name: GITHUB_OWNER
+            Value: !Ref GitHubOwner
+          - Name: GITHUB_REPO
+            Value: !Ref GitHubRepo
+          - Name: CODESTAR_CONNECTION_ARN
+            Value: !Ref CodeStarConnectionArn
+
+  # ----------------------------------------------------------
+  # CodePipeline — source from GitHub, build with CodeBuild
+  # ----------------------------------------------------------
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub "pokemon-id-pipeline-${AWS::StackName}"
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactsBucketName
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHubSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: "1"
+              Configuration:
+                ConnectionArn: !Ref CodeStarConnectionArn
+                FullRepositoryId: !Sub "${GitHubOwner}/${GitHubRepo}"
+                BranchName: !Ref GitHubBranch
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: SourceArtifact
+        - Name: Build
+          Actions:
+            - Name: BuildAndDeploy
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref BuildProject
+              InputArtifacts:
+                - Name: SourceArtifact
+              OutputArtifacts:
+                - Name: BuildArtifact
+
+# ============================================================
+# OUTPUTS
+# ============================================================
+Outputs:
+  CloudFrontUrl:
+    Description: "Public URL of the website (use this after the distribution is deployed)"
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+
+  ApiEndpoint:
+    Description: "Direct API Gateway endpoint (also accessible via CloudFront /api/*)"
+    Value: !GetAtt HttpApi.ApiEndpoint
+
+  FrontendBucketName:
+    Description: "S3 bucket storing the frontend static files"
+    Value: !Ref FrontendBucket
+
+  DistributionId:
+    Description: "CloudFront distribution ID (needed for cache invalidations)"
+    Value: !Ref CloudFrontDistribution
+
+  CacheTableName:
+    Description: "DynamoDB cache table name"
+    Value: !Ref CacheTable

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pokemon TCG — ID Analyzer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Pokemon TCG — Should I ID?</h1>
+    <p class="subtitle">Intentional Draw analysis for the upcoming round</p>
+  </header>
+
+  <main>
+    <div id="controls">
+      <button id="refresh-btn" onclick="loadData(true)">Refresh Now</button>
+      <span id="cache-info" class="cache-info"></span>
+    </div>
+
+    <div id="status-banner" class="banner hidden"></div>
+
+    <div id="content">
+      <div id="loading" class="loading hidden">
+        <div class="spinner"></div>
+        <span>Loading pairings...</span>
+      </div>
+      <div id="divisions"></div>
+    </div>
+  </main>
+
+  <footer>
+    <p>Data refreshes automatically every 5 minutes. Probabilities assume all other matches are 50/50.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
