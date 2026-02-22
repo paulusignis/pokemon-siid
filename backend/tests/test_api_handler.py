@@ -52,12 +52,27 @@ def aws_mocks():
             BillingMode="PAY_PER_REQUEST",
         )
 
+        # Create a stub IAM role (moto now validates the role exists before Lambda creation)
+        iam = boto3.client("iam", region_name=AWS_REGION)
+        iam.create_role(
+            RoleName="test-lambda-role",
+            AssumeRolePolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }],
+            }),
+        )
+        role_arn = f"arn:aws:iam::123456789012:role/test-lambda-role"
+
         # Create a stub Lambda function so boto3 doesn't error on invoke
         lam = boto3.client("lambda", region_name=AWS_REGION)
         lam.create_function(
             FunctionName="pokemon-siid-scraper",
             Runtime="python3.12",
-            Role="arn:aws:iam::123456789012:role/test",
+            Role=role_arn,
             Handler="handler.lambda_handler",
             Code={"ZipFile": b"fake"},
         )
