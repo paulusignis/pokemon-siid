@@ -12,6 +12,8 @@ Cache strategy:
   3. Return result with CORS headers
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os

@@ -12,6 +12,8 @@ Player cell format: "Name, W-L-T, points, division"
   - Points: wins*3 + ties*1 (validated against reported value)
 """
 
+from __future__ import annotations
+
 import logging
 import re
 from dataclasses import dataclass

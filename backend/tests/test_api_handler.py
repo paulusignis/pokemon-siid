@@ -1,5 +1,6 @@
 """Unit tests for backend/api/handler.py — uses moto to mock DynamoDB + Lambda."""
-import sys
+import importlib
+import importlib.util
 import os
 import json
 import time
@@ -14,11 +15,22 @@ AWS_REGION = "us-west-2"
 os.environ["CACHE_TABLE_NAME"] = "pokemon-siid-cache"
 os.environ["SCRAPER_FUNCTION_NAME"] = "pokemon-siid-scraper"
 os.environ["CACHE_TTL_SECONDS"] = "300"
+os.environ["PAIRINGS_URL"] = "https://example.com"
 os.environ["AWS_DEFAULT_REGION"] = AWS_REGION
 os.environ["AWS_ACCESS_KEY_ID"] = "testing"
 os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "api"))
+# Load the API handler by absolute path so sys.path ordering between test
+# files cannot cause the scraper handler to be imported instead.
+_API_HANDLER_PATH = os.path.join(os.path.dirname(__file__), "..", "api", "handler.py")
+
+
+def _load_handler():
+    """Load backend/api/handler.py as a fresh module instance."""
+    spec = importlib.util.spec_from_file_location("api_handler", _API_HANDLER_PATH)
+    h = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(h)
+    return h
 
 
 SAMPLE_PAYLOAD = {
@@ -40,10 +52,9 @@ def make_event(force_refresh=False):
 
 @pytest.fixture(autouse=True)
 def aws_mocks():
-    """Start moto mocks for DynamoDB and Lambda before each test."""
+    """Start moto mocks for DynamoDB before each test."""
     from moto import mock_aws
     with mock_aws():
-        # Create the DynamoDB table
         ddb = boto3.resource("dynamodb", region_name=AWS_REGION)
         ddb.create_table(
             TableName="pokemon-siid-cache",
@@ -51,32 +62,6 @@ def aws_mocks():
             AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
-
-        # Create a stub IAM role (moto now validates the role exists before Lambda creation)
-        iam = boto3.client("iam", region_name=AWS_REGION)
-        iam.create_role(
-            RoleName="test-lambda-role",
-            AssumeRolePolicyDocument=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole",
-                }],
-            }),
-        )
-        role_arn = f"arn:aws:iam::123456789012:role/test-lambda-role"
-
-        # Create a stub Lambda function so boto3 doesn't error on invoke
-        lam = boto3.client("lambda", region_name=AWS_REGION)
-        lam.create_function(
-            FunctionName="pokemon-siid-scraper",
-            Runtime="python3.12",
-            Role=role_arn,
-            Handler="handler.lambda_handler",
-            Code={"ZipFile": b"fake"},
-        )
-
         yield ddb
 
 
@@ -96,27 +81,25 @@ def _put_cache(ddb, age_seconds=10, status="success"):
 
 
 class TestApiHandler:
-    def test_fresh_cache_returned_without_scraping(self, aws_mocks):
+    def test_fresh_cache_returned_without_scraping(self, aws_mocks, monkeypatch):
         """Fresh cache should be returned and Lambda should NOT be invoked."""
-        _put_cache(aws_mocks, age_seconds=30)  # 30s old, TTL is 300s
+        _put_cache(aws_mocks, age_seconds=30)
+        h = _load_handler()
 
-        import importlib
-        import handler as h
-        importlib.reload(h)
+        scraper_called = []
+        monkeypatch.setattr(h, "_invoke_scraper", lambda: scraper_called.append(True) or SAMPLE_PAYLOAD)
 
         response = h.lambda_handler(make_event(), None)
         assert response["statusCode"] == 200
+        assert len(scraper_called) == 0  # cache was fresh, scraper not called
         body = json.loads(response["body"])
         assert body["data_source"] == "cache"
         assert body["cache_age_seconds"] >= 30
 
     def test_stale_cache_triggers_scrape(self, aws_mocks, monkeypatch):
         """Stale cache should trigger Scraper Lambda invoke."""
-        _put_cache(aws_mocks, age_seconds=400)  # older than 300s TTL
-
-        import importlib
-        import handler as h
-        importlib.reload(h)
+        _put_cache(aws_mocks, age_seconds=400)
+        h = _load_handler()
 
         scraper_called = []
 
@@ -134,9 +117,7 @@ class TestApiHandler:
 
     def test_empty_cache_triggers_scrape(self, aws_mocks, monkeypatch):
         """No cache item should trigger Scraper Lambda invoke."""
-        import importlib
-        import handler as h
-        importlib.reload(h)
+        h = _load_handler()
 
         scraper_called = []
 
@@ -152,10 +133,7 @@ class TestApiHandler:
 
     def test_503_when_no_cache_and_scrape_fails(self, aws_mocks, monkeypatch):
         """No cache + failed scrape → 503."""
-        import importlib
-        import handler as h
-        importlib.reload(h)
-
+        h = _load_handler()
         monkeypatch.setattr(h, "_invoke_scraper", lambda: None)
 
         response = h.lambda_handler(make_event(), None)
@@ -166,11 +144,7 @@ class TestApiHandler:
     def test_stale_cache_returned_when_scrape_fails(self, aws_mocks, monkeypatch):
         """Stale cache exists + live scrape fails → return stale data (not 503)."""
         _put_cache(aws_mocks, age_seconds=400)
-
-        import importlib
-        import handler as h
-        importlib.reload(h)
-
+        h = _load_handler()
         monkeypatch.setattr(h, "_invoke_scraper", lambda: None)
 
         response = h.lambda_handler(make_event(), None)
@@ -181,10 +155,7 @@ class TestApiHandler:
     def test_force_refresh_bypasses_fresh_cache(self, aws_mocks, monkeypatch):
         """force_refresh=true should trigger live scrape even if cache is fresh."""
         _put_cache(aws_mocks, age_seconds=10)
-
-        import importlib
-        import handler as h
-        importlib.reload(h)
+        h = _load_handler()
 
         scraper_called = []
 
@@ -200,10 +171,7 @@ class TestApiHandler:
 
     def test_cors_headers_always_present(self, aws_mocks, monkeypatch):
         """CORS headers must be present on all responses."""
-        import importlib
-        import handler as h
-        importlib.reload(h)
-
+        h = _load_handler()
         monkeypatch.setattr(h, "_invoke_scraper", lambda: None)
 
         response = h.lambda_handler(make_event(), None)
