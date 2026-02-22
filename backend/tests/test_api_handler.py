@@ -7,11 +7,14 @@ import time
 import boto3
 import pytest
 
+# Single place to configure the AWS region used across all tests
+AWS_REGION = "us-west-2"
+
 # Provide required env vars before importing the handler
-os.environ["CACHE_TABLE_NAME"] = "pokemon-id-cache"
-os.environ["SCRAPER_FUNCTION_NAME"] = "pokemon-id-scraper"
+os.environ["CACHE_TABLE_NAME"] = "pokemon-siid-cache"
+os.environ["SCRAPER_FUNCTION_NAME"] = "pokemon-siid-scraper"
 os.environ["CACHE_TTL_SECONDS"] = "300"
-os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+os.environ["AWS_DEFAULT_REGION"] = AWS_REGION
 os.environ["AWS_ACCESS_KEY_ID"] = "testing"
 os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
 
@@ -41,18 +44,18 @@ def aws_mocks():
     from moto import mock_aws
     with mock_aws():
         # Create the DynamoDB table
-        ddb = boto3.resource("dynamodb", region_name="us-east-1")
+        ddb = boto3.resource("dynamodb", region_name=AWS_REGION)
         ddb.create_table(
-            TableName="pokemon-id-cache",
+            TableName="pokemon-siid-cache",
             KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
             AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
 
         # Create a stub Lambda function so boto3 doesn't error on invoke
-        lam = boto3.client("lambda", region_name="us-east-1")
+        lam = boto3.client("lambda", region_name=AWS_REGION)
         lam.create_function(
-            FunctionName="pokemon-id-scraper",
+            FunctionName="pokemon-siid-scraper",
             Runtime="python3.12",
             Role="arn:aws:iam::123456789012:role/test",
             Handler="handler.lambda_handler",
@@ -65,7 +68,7 @@ def aws_mocks():
 def _put_cache(ddb, age_seconds=10, status="success"):
     """Helper: put a cache item with given age into DynamoDB."""
     now = int(time.time())
-    table = ddb.Table("pokemon-id-cache")
+    table = ddb.Table("pokemon-siid-cache")
     table.put_item(Item={
         "pk": "latest",
         "timestamp": "2024-01-15T14:30:00+00:00",

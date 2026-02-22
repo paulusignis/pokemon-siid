@@ -51,7 +51,7 @@ EventBridge (every 5 min) ──► Scraper Lambda ──► DynamoDB (upsert)
 ## Repository Layout
 
 ```
-pokemon-id-analyzer/
+pokemon-siid/
 ├── frontend/
 │   ├── index.html        Static page shell
 │   ├── style.css         Dark-theme UI
@@ -135,10 +135,10 @@ scrape_status   "success" | "error"
 
 2. **Create Artifacts S3 bucket** (once):
    ```bash
-   aws s3 mb s3://pokemon-id-artifacts-$(aws sts get-caller-identity --query Account --output text) \
-     --region us-east-1
+   aws s3 mb s3://pokemon-siid-artifacts-$(aws sts get-caller-identity --query Account --output text) \
+     --region us-west-2
    aws s3api put-bucket-versioning \
-     --bucket pokemon-id-artifacts-ACCOUNTID \
+     --bucket pokemon-siid-artifacts-ACCOUNTID \
      --versioning-configuration Status=Enabled
    ```
 
@@ -146,15 +146,15 @@ scrape_status   "success" | "error"
    ```bash
    aws cloudformation deploy \
      --template-file infrastructure/template.yaml \
-     --stack-name pokemon-id-analyzer \
+     --stack-name pokemon-siid \
      --capabilities CAPABILITY_NAMED_IAM \
      --parameter-overrides \
        CodeStarConnectionArn=arn:aws:codestar-connections:REGION:ACCOUNTID:connection/XXXX \
        GitHubOwner=YOUR_GITHUB_USERNAME \
-       GitHubRepo=pokemon-id-analyzer \
-       ArtifactsBucketName=pokemon-id-artifacts-ACCOUNTID \
+       GitHubRepo=pokemon-siid \
+       ArtifactsBucketName=pokemon-siid-artifacts-ACCOUNTID \
        PairingsUrl=https://tabletopvillage.github.io \
-     --region us-east-1
+     --region us-west-2
    ```
 
 4. **Push to GitHub** — CodePipeline auto-triggers and runs CodeBuild which deploys the real Lambda code.
@@ -168,8 +168,8 @@ scrape_status   "success" | "error"
 [ ] Visit https://{cloudfront-domain} — see the ID Analyzer page
 [ ] Browser console: fetch /api/analysis returns 200 JSON
 [ ] AWS Console → EventBridge → Rules → schedule rule is ENABLED
-[ ] CloudWatch Logs → /aws/lambda/pokemon-id-scraper — first scheduled run logged
-[ ] DynamoDB → pokemon-id-cache → item with pk="latest" exists
+[ ] CloudWatch Logs → /aws/lambda/pokemon-siid-scraper — first scheduled run logged
+[ ] DynamoDB → pokemon-siid-cache → item with pk="latest" exists
 ```
 
 ---

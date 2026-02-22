@@ -57,20 +57,20 @@ phases:
       # ── 4. Update Scraper Lambda code ─────────────────────────────────────
       - |
         aws lambda update-function-code \
-          --function-name pokemon-id-scraper \
+          --function-name pokemon-siid-scraper \
           --s3-bucket "$ARTIFACTS_BUCKET" \
           --s3-key lambda/scraper.zip \
           --no-cli-pager
-      - aws lambda wait function-updated --function-name pokemon-id-scraper
+      - aws lambda wait function-updated --function-name pokemon-siid-scraper
 
       # ── 5. Update API Lambda code ──────────────────────────────────────────
       - |
         aws lambda update-function-code \
-          --function-name pokemon-id-api \
+          --function-name pokemon-siid-api \
           --s3-bucket "$ARTIFACTS_BUCKET" \
           --s3-key lambda/api.zip \
           --no-cli-pager
-      - aws lambda wait function-updated --function-name pokemon-id-api
+      - aws lambda wait function-updated --function-name pokemon-siid-api
 
       # ── 6. Sync frontend to S3 ────────────────────────────────────────────
       - |

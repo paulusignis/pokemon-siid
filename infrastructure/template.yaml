@@ -19,7 +19,7 @@ Parameters:
 
   GitHubRepo:
     Type: String
-    Default: "pokemon-id-analyzer"
+    Default: "pokemon-siid"
 
   GitHubBranch:
     Type: String
@@ -54,7 +54,7 @@ Resources:
   FrontendBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "pokemon-id-frontend-${AWS::AccountId}-${AWS::Region}"
+      BucketName: !Sub "pokemon-siid-frontend-${AWS::AccountId}-${AWS::Region}"
       VersioningConfiguration:
         Status: Enabled
       PublicAccessBlockConfiguration:
@@ -86,7 +86,7 @@ Resources:
   CacheTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: pokemon-id-cache
+      TableName: pokemon-siid-cache
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: pk
@@ -105,7 +105,7 @@ Resources:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
       OriginAccessControlConfig:
-        Name: !Sub "pokemon-id-oac-${AWS::StackName}"
+        Name: !Sub "pokemon-siid-oac-${AWS::StackName}"
         OriginAccessControlOriginType: s3
         SigningBehavior: always
         SigningProtocol: sigv4
@@ -160,7 +160,7 @@ Resources:
   ScraperLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "pokemon-id-scraper-role-${AWS::StackName}"
+      RoleName: !Sub "pokemon-siid-scraper-role-${AWS::StackName}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -183,7 +183,7 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/pokemon-id-scraper*"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/pokemon-siid-scraper*"
 
   # ----------------------------------------------------------
   # IAM — API Lambda role
@@ -191,7 +191,7 @@ Resources:
   ApiLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "pokemon-id-api-role-${AWS::StackName}"
+      RoleName: !Sub "pokemon-siid-api-role-${AWS::StackName}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -217,7 +217,7 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/pokemon-id-api*"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/pokemon-siid-api*"
 
   # ----------------------------------------------------------
   # IAM — CodeBuild role
@@ -225,7 +225,7 @@ Resources:
   CodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "pokemon-id-codebuild-role-${AWS::StackName}"
+      RoleName: !Sub "pokemon-siid-codebuild-role-${AWS::StackName}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -286,7 +286,7 @@ Resources:
   CodePipelineRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "pokemon-id-pipeline-role-${AWS::StackName}"
+      RoleName: !Sub "pokemon-siid-pipeline-role-${AWS::StackName}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -319,7 +319,7 @@ Resources:
   ScraperFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: pokemon-id-scraper
+      FunctionName: pokemon-siid-scraper
       Runtime: python3.12
       Handler: handler.lambda_handler
       Role: !GetAtt ScraperLambdaRole.Arn
@@ -348,7 +348,7 @@ Resources:
   ApiFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: pokemon-id-api
+      FunctionName: pokemon-siid-api
       Runtime: python3.12
       Handler: handler.lambda_handler
       Role: !GetAtt ApiLambdaRole.Arn
@@ -377,7 +377,7 @@ Resources:
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: pokemon-id-api
+      Name: pokemon-siid-api
       ProtocolType: HTTP
       CorsConfiguration:
         AllowOrigins:
@@ -424,7 +424,7 @@ Resources:
   ScraperScheduleRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub "pokemon-id-scrape-schedule-${AWS::StackName}"
+      Name: !Sub "pokemon-siid-scrape-schedule-${AWS::StackName}"
       Description: "Trigger scraper Lambda every 5 minutes"
       ScheduleExpression: "rate(5 minutes)"
       State: ENABLED
@@ -446,7 +446,7 @@ Resources:
   BuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Sub "pokemon-id-build-${AWS::StackName}"
+      Name: !Sub "pokemon-siid-build-${AWS::StackName}"
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Source:
         Type: CODEPIPELINE
@@ -481,7 +481,7 @@ Resources:
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
-      Name: !Sub "pokemon-id-pipeline-${AWS::StackName}"
+      Name: !Sub "pokemon-siid-pipeline-${AWS::StackName}"
       RoleArn: !GetAtt CodePipelineRole.Arn
       ArtifactStore:
         Type: S3
