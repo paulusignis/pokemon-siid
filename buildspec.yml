@@ -1,12 +1,16 @@
 version: 0.2
 
+# CodeBuild handles: test → package Lambdas → deploy Lambda code → sync frontend → invalidate CDN
+#
+# CloudFormation infrastructure changes are applied separately via the local CLI:
+#   aws cloudformation deploy --template-file infrastructure/template.yaml \
+#     --stack-name pokemon-siid --capabilities CAPABILITY_NAMED_IAM \
+#     --profile pokemon-siid --region us-west-2
+#
 # Environment variables injected by CodeBuild project (set in CloudFormation):
-#   STACK_NAME               — CloudFormation stack name
 #   FRONTEND_BUCKET          — S3 bucket for static frontend files
 #   CLOUDFRONT_DISTRIBUTION_ID — for cache invalidation after frontend deploy
 #   ARTIFACTS_BUCKET         — S3 bucket for Lambda zip packages
-#   PAIRINGS_URL             — tournament pairings URL to scrape
-#   GITHUB_OWNER / GITHUB_REPO / CODESTAR_CONNECTION_ARN — pipeline config
 
 phases:
   install:
@@ -40,21 +44,7 @@ phases:
       - cd /tmp/api_pkg && zip -r9 "$OLDPWD/api.zip" . --quiet && cd "$OLDPWD"
       - aws s3 cp api.zip "s3://${ARTIFACTS_BUCKET}/lambda/api.zip"
 
-      # ── 3. Deploy / update CloudFormation stack ────────────────────────────
-      - |
-        aws cloudformation deploy \
-          --template-file infrastructure/template.yaml \
-          --stack-name "$STACK_NAME" \
-          --capabilities CAPABILITY_NAMED_IAM \
-          --parameter-overrides \
-            PairingsUrl="$PAIRINGS_URL" \
-            CodeStarConnectionArn="$CODESTAR_CONNECTION_ARN" \
-            GitHubOwner="$GITHUB_OWNER" \
-            GitHubRepo="$GITHUB_REPO" \
-            ArtifactsBucketName="$ARTIFACTS_BUCKET" \
-          --no-fail-on-empty-changeset
-
-      # ── 4. Update Scraper Lambda code ─────────────────────────────────────
+      # ── 3. Update Scraper Lambda code ─────────────────────────────────────
       - |
         aws lambda update-function-code \
           --function-name pokemon-siid-scraper \
@@ -63,7 +53,7 @@ phases:
           --no-cli-pager
       - aws lambda wait function-updated --function-name pokemon-siid-scraper
 
-      # ── 5. Update API Lambda code ──────────────────────────────────────────
+      # ── 4. Update API Lambda code ──────────────────────────────────────────
       - |
         aws lambda update-function-code \
           --function-name pokemon-siid-api \
@@ -72,13 +62,13 @@ phases:
           --no-cli-pager
       - aws lambda wait function-updated --function-name pokemon-siid-api
 
-      # ── 6. Sync frontend to S3 ────────────────────────────────────────────
+      # ── 5. Sync frontend to S3 ────────────────────────────────────────────
       - |
         aws s3 sync frontend/ "s3://${FRONTEND_BUCKET}/" \
           --delete \
           --cache-control "max-age=300, must-revalidate"
 
-      # ── 7. Invalidate CloudFront cache ────────────────────────────────────
+      # ── 6. Invalidate CloudFront cache ────────────────────────────────────
       - |
         aws cloudfront create-invalidation \
           --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
@@ -89,7 +79,7 @@ phases:
     commands:
       - |
         if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then
-          echo "SUCCESS — stack updated, Lambdas deployed, frontend synced."
+          echo "SUCCESS — Lambdas deployed, frontend synced, CDN invalidated."
         else
           echo "FAILURE — check the logs above for details."
         fi

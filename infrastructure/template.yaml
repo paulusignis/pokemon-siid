@@ -239,7 +239,13 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                Action: s3:*
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:ListBucket
+                  - s3:DeleteObject
                 Resource:
                   - !Sub "arn:aws:s3:::${ArtifactsBucketName}"
                   - !Sub "arn:aws:s3:::${ArtifactsBucketName}/*"
@@ -247,19 +253,14 @@ Resources:
                   - !Sub "${FrontendBucket.Arn}/*"
               - Effect: Allow
                 Action:
-                  - cloudformation:CreateStack
-                  - cloudformation:UpdateStack
-                  - cloudformation:DescribeStacks
-                  - cloudformation:DescribeStackEvents
-                  - cloudformation:DescribeStackResource
-                  - cloudformation:GetTemplate
-                  - cloudformation:ValidateTemplate
-                Resource: "*"
+                  - lambda:UpdateFunctionCode
+                  - lambda:GetFunctionConfiguration
+                Resource:
+                  - !GetAtt ScraperFunction.Arn
+                  - !GetAtt ApiFunction.Arn
               - Effect: Allow
                 Action:
-                  - lambda:UpdateFunctionCode
-                  - lambda:UpdateFunctionConfiguration
-                  - lambda:GetFunctionConfiguration
+                  - lambda:GetFunction
                 Resource:
                   - !GetAtt ScraperFunction.Arn
                   - !GetAtt ApiFunction.Arn
@@ -267,12 +268,6 @@ Resources:
                 Action:
                   - cloudfront:CreateInvalidation
                 Resource: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
-              - Effect: Allow
-                Action:
-                  - iam:PassRole
-                Resource:
-                  - !GetAtt ScraperLambdaRole.Arn
-                  - !GetAtt ApiLambdaRole.Arn
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
