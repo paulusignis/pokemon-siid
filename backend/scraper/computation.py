@@ -213,7 +213,14 @@ def compute_id_analysis(pairings: list) -> dict:
 
     for division, div_pairings in divisions.items():
         base = _base_standings(div_pairings)
-        player_count = len(base)
+        # Count only players whose own division matches this group — opponents
+        # from other divisions may appear in pairings but shouldn't inflate the count.
+        player_count = len({
+            player.name
+            for p in div_pairings
+            for player in (p.name_player, p.opp_player)
+            if player.division.upper() == division
+        })
         top_n = _top_cut_for_count(player_count)
         pairing_results = []
 

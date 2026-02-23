@@ -129,8 +129,8 @@ function renderPairingCard(pairing) {
   const isId = ia.recommendation === "ID";
   card.className = `pairing-card${isId ? " recommend-id" : ""}`;
 
-  const pctId  = (ia.prob_top_cut_if_id  * 100).toFixed(1);
-  const pctWin = (ia.prob_top_cut_if_win * 100).toFixed(1);
+  const pctId  = ((ia.prob_top_cut_if_id  ?? ia.prob_top8_if_id)  * 100).toFixed(1);
+  const pctWin = ((ia.prob_top_cut_if_win ?? ia.prob_top8_if_win) * 100).toFixed(1);
   const marginPct = (ia.margin * 100).toFixed(1);
   const marginDir = ia.id_beneficial ? `ID better by ${marginPct}%` : `Win better by ${marginPct}%`;
   const topCutLabel = `Top ${ia.top_cut} probability`;
