@@ -77,15 +77,18 @@ def _group_by_division(pairings: list) -> dict[str, list]:
     return groups
 
 
-def _base_standings(div_pairings: list) -> dict[str, int]:
+def _base_standings(div_pairings: list, division: str) -> dict[str, int]:
     """
-    Build a dict of {player_name: current_points} for every player
-    that appears in this division's pairings.
+    Build a dict of {player_name: current_points} for players in this
+    division only.  Cross-division opponents are excluded so they cannot
+    affect the division's rankings.
     """
     standings: dict[str, int] = {}
     for p in div_pairings:
-        standings.setdefault(p.name_player.name, p.name_player.points)
-        standings.setdefault(p.opp_player.name, p.opp_player.points)
+        if p.name_player.division.upper() == division:
+            standings.setdefault(p.name_player.name, p.name_player.points)
+        if p.opp_player.division.upper() == division:
+            standings.setdefault(p.opp_player.name, p.opp_player.points)
     return standings
 
 
@@ -109,24 +112,29 @@ def _apply_outcome(
     """Return a new standings dict after applying all round results."""
     standings = dict(base)
 
-    # Target pairing result
+    # Target pairing result (name_player is always in standings; opp may not be)
     if target_result == "id":
         standings[target_pairing.name_player.name] += 1
-        standings[target_pairing.opp_player.name] += 1
+        if target_pairing.opp_player.name in standings:
+            standings[target_pairing.opp_player.name] += 1
     else:  # "win"
         standings[target_pairing.name_player.name] += 3
         # opponent gets +0
 
-    # Other pairings results
+    # Other pairings results — only update players present in standings
     for idx, result in other_outcome.items():
         p = other_pairings[idx]
         if result == "name_wins":
-            standings[p.name_player.name] += 3
+            if p.name_player.name in standings:
+                standings[p.name_player.name] += 3
         elif result == "draw":
-            standings[p.name_player.name] += 1
-            standings[p.opp_player.name] += 1
+            if p.name_player.name in standings:
+                standings[p.name_player.name] += 1
+            if p.opp_player.name in standings:
+                standings[p.opp_player.name] += 1
         else:  # opp_wins
-            standings[p.opp_player.name] += 3
+            if p.opp_player.name in standings:
+                standings[p.opp_player.name] += 3
 
     return standings
 
@@ -219,7 +227,7 @@ def compute_id_analysis(pairings: list) -> dict:
     result = {}
 
     for division, div_pairings in divisions.items():
-        base = _base_standings(div_pairings)
+        base = _base_standings(div_pairings, division)
         # Count only players whose own division matches this group — opponents
         # from other divisions may appear in pairings but shouldn't inflate the count.
         player_count = len({

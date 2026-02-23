@@ -87,7 +87,7 @@ class TestAnalyzePairing:
         a = make_player("Alice", 5, 1, 0)   # 15 pts
         b = make_player("Bob",   5, 1, 0)   # 15 pts
         target = make_pairing(1, a, b)
-        base = _base_standings([target])
+        base = _base_standings([target], "MA")
         return target, [], base, top_n
 
     def test_two_player_both_always_in_cut(self):
@@ -138,7 +138,7 @@ class TestAnalyzePairing:
             for i in range(3)
         ]
         all_pairings = [target] + other_pairings
-        base = _base_standings(all_pairings)
+        base = _base_standings(all_pairings, "MA")
 
         result = _analyze_pairing(target, other_pairings, base, top_n=8)
         # Alice has 30 pts; even with +1 (ID), she's far ahead of everyone
@@ -149,7 +149,7 @@ class TestAnalyzePairing:
         a = make_player("Alice", 5, 1, 0)
         b = make_player("Bob", 4, 2, 0)
         target = make_pairing(1, a, b)
-        base = _base_standings([target])
+        base = _base_standings([target], "MA")
         result = _analyze_pairing(target, [], base, top_n=8)
         # With only 2 players, both probs are 1.0 → margin is 0 → WIN
         assert result["recommendation"] == "WIN"
@@ -169,7 +169,7 @@ class TestAnalyzePairing:
             other_pairings.append(make_pairing(i + 2, p1, p2))
 
         all_pairings = [target] + other_pairings
-        base = _base_standings(all_pairings)
+        base = _base_standings(all_pairings, "MA")
 
         random.seed(42)
         result_exhaustive = _analyze_pairing(target, other_pairings, base, top_n=8)
