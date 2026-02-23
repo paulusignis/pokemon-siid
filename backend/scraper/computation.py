@@ -2,7 +2,7 @@
 ID (Intentional Draw) analysis for Pokemon TCG Swiss tournaments.
 
 Top-cut thresholds by division size:
-  - <= 8 players : no analysis (field is too small to matter)
+  - <= 8 players : compute P(top 1)
   - 9–20 players : compute P(top 4)
   - >  20 players: compute P(top 8)
 
@@ -53,13 +53,16 @@ class Pairing:
     opp_player: Player
 
 
-def _top_cut_for_count(player_count: int) -> int | None:
+def _top_cut_for_count(player_count: int) -> int:
     """
     Return the top-cut threshold to compute probabilities for, based on
-    division size.  Returns None when the field is too small to matter.
+    division size.
+      <= 8 players : top 1
+      9–20 players : top 4
+      >  20 players: top 8
     """
     if player_count <= 8:
-        return None
+        return 1
     if player_count <= 20:
         return 4
     return 8
@@ -216,7 +219,7 @@ def compute_id_analysis(pairings: list) -> dict:
 
         for i, target in enumerate(div_pairings):
             other = [p for j, p in enumerate(div_pairings) if j != i]
-            analysis = _analyze_pairing(target, other, base, top_n) if top_n is not None else None
+            analysis = _analyze_pairing(target, other, base, top_n)
 
             pairing_results.append({
                 "table": target.table_num,

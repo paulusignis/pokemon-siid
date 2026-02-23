@@ -35,10 +35,10 @@ def make_division_pairings(n_players, division="MA", wins=3, losses=0, ties=0):
 
 class TestTopCutForCount:
     def test_zero_players(self):
-        assert _top_cut_for_count(0) is None
+        assert _top_cut_for_count(0) == 1
 
     def test_eight_players(self):
-        assert _top_cut_for_count(8) is None
+        assert _top_cut_for_count(8) == 1
 
     def test_nine_players(self):
         assert _top_cut_for_count(9) == 4
@@ -210,13 +210,14 @@ class TestComputeIdAnalysis:
         result = compute_id_analysis(pairings)
         assert result["MA"]["player_count"] == 4
 
-    def test_small_division_no_analysis(self):
-        """<= 8 players → top_cut is None, id_analysis is None for all pairings."""
+    def test_small_division_top1(self):
+        """<= 8 players → top_cut == 1, analysis computed for all pairings."""
         pairings = make_division_pairings(8, "MA")
         result = compute_id_analysis(pairings)
-        assert result["MA"]["top_cut"] is None
+        assert result["MA"]["top_cut"] == 1
         for row in result["MA"]["current_round_pairings"]:
-            assert row["id_analysis"] is None
+            assert row["id_analysis"] is not None
+            assert row["id_analysis"]["top_cut"] == 1
 
     def test_medium_division_top4(self):
         """9–20 players → top_cut == 4."""
@@ -252,10 +253,10 @@ class TestComputeIdAnalysis:
         assert "prob_top_cut_if_id" in analysis
         assert "prob_top_cut_if_win" in analysis
 
-    def test_boundary_eight_players_no_analysis(self):
+    def test_boundary_eight_players_top1(self):
         pairings = make_division_pairings(8, "SR")
         result = compute_id_analysis(pairings)
-        assert result["SR"]["top_cut"] is None
+        assert result["SR"]["top_cut"] == 1
 
     def test_boundary_nine_players_top4(self):
         # 9 players: 4 pairings + 1 bye pairing — model with 8 players + 1 extra
