@@ -477,6 +477,7 @@ Resources:
     Type: AWS::CodePipeline::Pipeline
     Properties:
       Name: !Sub "pokemon-siid-pipeline-${AWS::StackName}"
+      PipelineType: V1
       RoleArn: !GetAtt CodePipelineRole.Arn
       ArtifactStore:
         Type: S3
