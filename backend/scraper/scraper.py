@@ -3,11 +3,12 @@ Fetches and parses a Pokemon TCG tournament pairings page.
 
 Expected HTML table format:
   Column 0: Table number (ignored)
-  Column 1: Name player  — "Alice Chen, 5-1-0, 15, MA"
+  Column 1: Name player  — "Kevin Clemente\xa0(3/0/1 (10) - MA)"
   Column 2: blank (ignored)
   Column 3: Opponent player — same format
 
-Player cell format: "Name, W-L-T, points, division"
+Player cell format: "Name (W/L/T (points) - DIVISION)"
+  - Non-breaking space (\xa0) separates name from the record block
   - Division: MA (Masters), SR (Seniors), JR (Juniors)
   - Points: wins*3 + ties*1 (validated against reported value)
 """
@@ -56,45 +57,42 @@ def parse_player_cell(cell_text: str) -> Player | None:
     Parse a single player cell string into a Player.
     Returns None for BYE, empty cells, or cells that cannot be parsed.
 
-    Expected format: "Alice Chen, 5-1-0, 15, MA"
+    Actual format: "Kevin Clemente\xa0(3/0/1 (10) - MA)"
+    Pattern: Name (W/L/T (points) - DIVISION)
     """
-    text = cell_text.strip()
+    # Normalise: replace non-breaking spaces with regular spaces, then strip
+    text = cell_text.replace("\xa0", " ").strip()
     if not text or text.upper() == "BYE":
         return None
 
-    # Split on comma — name may contain spaces but not commas
-    parts = [p.strip() for p in text.split(",")]
-    if len(parts) < 4:
-        logger.warning("Cell has fewer than 4 comma-parts, skipping: %r", text)
+    # Format: "Name (W/L/T (points) - DIVISION)"
+    m = re.match(
+        r"^(.+?)\s*\((\d+)/(\d+)/(\d+)\s*\((\d+)\)\s*-\s*(MA|SR|JR)\s*\)$",
+        text,
+        re.IGNORECASE,
+    )
+    if not m:
+        logger.warning("Cannot parse player cell, skipping: %r", text)
         return None
 
     try:
-        name = parts[0]
+        name = m.group(1).strip()
         if not name:
             return None
 
-        # Parse W-L-T record
-        record_match = re.fullmatch(r"(\d+)-(\d+)-(\d+)", parts[1])
-        if not record_match:
-            logger.warning("Cannot parse record %r for cell %r", parts[1], text)
-            return None
-        wins, losses, ties = int(record_match[1]), int(record_match[2]), int(record_match[3])
-
-        # Parse reported points
-        points = int(parts[2])
+        wins   = int(m.group(2))
+        losses = int(m.group(3))
+        ties   = int(m.group(4))
+        points = int(m.group(5))
+        division = m.group(6).upper()
 
         # Validate computed vs reported points
-        expected_points = wins * 3 + ties * 1
+        expected_points = wins * 3 + ties
         if expected_points != points:
             logger.warning(
                 "Points mismatch for %r: computed %d (W=%d L=%d T=%d), reported %d — using reported",
                 name, expected_points, wins, losses, ties, points,
             )
-
-        division = parts[3].upper()
-        if division not in VALID_DIVISIONS:
-            logger.warning("Unknown division %r for player %r, skipping", division, name)
-            return None
 
         return Player(
             name=name,
@@ -105,7 +103,7 @@ def parse_player_cell(cell_text: str) -> Player | None:
             division=division,
         )
 
-    except (ValueError, IndexError) as exc:
+    except (ValueError, AttributeError) as exc:
         logger.warning("Failed to parse player cell %r: %s", text, exc)
         return None
 

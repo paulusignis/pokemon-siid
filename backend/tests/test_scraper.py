@@ -13,7 +13,7 @@ from scraper import parse_pairings, parse_player_cell, Player
 
 class TestParsePlayerCell:
     def test_normal_cell(self):
-        p = parse_player_cell("Alice Chen, 5-1-0, 15, MA")
+        p = parse_player_cell("Alice Chen\xa0(5/1/0 (15) - MA)")
         assert p is not None
         assert p.name == "Alice Chen"
         assert p.wins == 5
@@ -23,19 +23,19 @@ class TestParsePlayerCell:
         assert p.division == "MA"
 
     def test_senior_division(self):
-        p = parse_player_cell("Bob Kim, 3-2-0, 9, SR")
+        p = parse_player_cell("Bob Kim\xa0(3/2/0 (9) - SR)")
         assert p is not None
         assert p.division == "SR"
 
     def test_junior_division(self):
-        p = parse_player_cell("Charlie Doe, 4-1-1, 13, JR")
+        p = parse_player_cell("Charlie Doe\xa0(4/1/1 (13) - JR)")
         assert p is not None
         assert p.division == "JR"
         assert p.ties == 1
         assert p.points == 13
 
     def test_tie_record(self):
-        p = parse_player_cell("Dana Lee, 4-1-1, 13, MA")
+        p = parse_player_cell("Dana Lee\xa0(4/1/1 (13) - MA)")
         assert p is not None
         assert p.wins == 4
         assert p.losses == 1
@@ -52,24 +52,35 @@ class TestParsePlayerCell:
         assert parse_player_cell("   ") is None
 
     def test_unknown_division_skipped(self):
-        assert parse_player_cell("Eve, 3-0-0, 9, XY") is None
+        assert parse_player_cell("Eve\xa0(3/0/0 (9) - XY)") is None
 
     def test_malformed_record_skipped(self):
-        assert parse_player_cell("Frank, 3-0, 9, MA") is None
+        assert parse_player_cell("Frank\xa0(3/0 (9) - MA)") is None
 
     def test_too_few_parts_skipped(self):
-        assert parse_player_cell("Grace, 3-0-0, 9") is None
+        assert parse_player_cell("Grace\xa0(3/0/0 (9))") is None
 
     def test_lowercase_division_normalised(self):
-        p = parse_player_cell("Hank, 1-0-0, 3, ma")
+        p = parse_player_cell("Hank\xa0(1/0/0 (3) - ma)")
         assert p is not None
         assert p.division == "MA"
 
     def test_points_mismatch_uses_reported(self):
         # Reported 12 but computed should be 3*3 + 0 = 9 — uses reported value
-        p = parse_player_cell("Iris, 3-0-0, 12, MA")
+        p = parse_player_cell("Iris\xa0(3/0/0 (12) - MA)")
         assert p is not None
         assert p.points == 12
+
+    def test_space_around_parens(self):
+        # Extra whitespace around the record block should still parse
+        p = parse_player_cell("Kevin Clemente\xa0(3/0/1 (10) - MA)")
+        assert p is not None
+        assert p.name == "Kevin Clemente"
+        assert p.wins == 3
+        assert p.losses == 0
+        assert p.ties == 1
+        assert p.points == 10
+        assert p.division == "MA"
 
 
 # ---------------------------------------------------------------------------
@@ -82,15 +93,15 @@ SIMPLE_TABLE = """
   <tr><th>Table</th><th>Name</th><th></th><th>Opponent</th></tr>
   <tr>
     <td>1</td>
-    <td>Alice Chen, 5-1-0, 15, MA</td>
+    <td>Alice Chen\xa0(5/1/0 (15) - MA)</td>
     <td></td>
-    <td>Bob Martinez, 5-1-0, 15, MA</td>
+    <td>Bob Martinez\xa0(5/1/0 (15) - MA)</td>
   </tr>
   <tr>
     <td>2</td>
-    <td>Carol Smith, 4-2-0, 12, MA</td>
+    <td>Carol Smith\xa0(4/2/0 (12) - MA)</td>
     <td></td>
-    <td>Dave Jones, 4-2-0, 12, MA</td>
+    <td>Dave Jones\xa0(4/2/0 (12) - MA)</td>
   </tr>
 </table>
 </body></html>
@@ -102,7 +113,7 @@ BYE_TABLE = """
   <tr><th>Table</th><th>Name</th><th></th><th>Opponent</th></tr>
   <tr>
     <td>1</td>
-    <td>Alice Chen, 5-1-0, 15, MA</td>
+    <td>Alice Chen\xa0(5/1/0 (15) - MA)</td>
     <td></td>
     <td>BYE</td>
   </tr>
@@ -114,9 +125,9 @@ MULTI_DIVISION_TABLE = """
 <html><body>
 <table>
   <tr><th>Table</th><th>Name</th><th></th><th>Opponent</th></tr>
-  <tr><td>1</td><td>Alice, 5-1-0, 15, MA</td><td></td><td>Bob, 5-1-0, 15, MA</td></tr>
-  <tr><td>2</td><td>Charlie, 3-0-0, 9, SR</td><td></td><td>Diana, 3-0-0, 9, SR</td></tr>
-  <tr><td>3</td><td>Eli, 2-0-0, 6, JR</td><td></td><td>Fay, 2-0-0, 6, JR</td></tr>
+  <tr><td>1</td><td>Alice\xa0(5/1/0 (15) - MA)</td><td></td><td>Bob\xa0(5/1/0 (15) - MA)</td></tr>
+  <tr><td>2</td><td>Charlie\xa0(3/0/0 (9) - SR)</td><td></td><td>Diana\xa0(3/0/0 (9) - SR)</td></tr>
+  <tr><td>3</td><td>Eli\xa0(2/0/0 (6) - JR)</td><td></td><td>Fay\xa0(2/0/0 (6) - JR)</td></tr>
 </table>
 </body></html>
 """
