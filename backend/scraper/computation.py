@@ -229,11 +229,13 @@ def compute_id_analysis(pairings: list) -> dict:
             if player.division.upper() == division
         })
         top_n = _top_cut_for_count(player_count)
+        division_table_count = len({p.table_num for p in div_pairings})
         pairing_results = []
 
         for i, target in enumerate(div_pairings):
             other = [p for j, p in enumerate(div_pairings) if j != i]
             analysis = _analyze_pairing(target, other, base, top_n)
+            analysis["division_table_count"] = division_table_count
 
             pairing_results.append({
                 "table": target.table_num,

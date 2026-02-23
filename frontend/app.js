@@ -144,9 +144,10 @@ function renderPairingCard(pairing) {
     </div>
 
     <div class="matchup">
-      <div class="player-info name-side">
+      <div class="player-info name-side analysed-player">
         <div class="player-name" title="${esc(np.name)}">${esc(np.name)}</div>
         <div class="player-record">${np.wins}-${np.losses}-${np.ties} &bull; ${np.points} pts</div>
+        <div class="analysed-label">analysed</div>
       </div>
       <div class="vs">vs</div>
       <div class="player-info opp-side">
@@ -177,7 +178,7 @@ function renderPairingCard(pairing) {
       ${ia.simulation_method === "exhaustive"
         ? `Exhaustive (${Math.pow(3, ia.other_matches_count)} scenarios)`
         : `Monte Carlo (10,000 samples)`}
-      &bull; ${ia.other_matches_count + 1} ${ia.other_matches_count + 1 === 1 ? "table" : "tables"} in division
+      &bull; ${ia.division_table_count ?? (ia.other_matches_count + 1)} tables in division
     </div>
   `;
 
