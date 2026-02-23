@@ -80,10 +80,14 @@ function renderDivision(divKey, divData) {
   section.className = "division";
 
   const label = DIVISION_LABELS[divKey] || divKey;
+  const topCutBadge = divData.top_cut != null
+    ? ` &bull; Top ${divData.top_cut} cut`
+    : "";
+
   section.innerHTML = `
     <div class="division-header">
       <span class="division-name">${label}</span>
-      <span class="division-badge">${divData.player_count} players</span>
+      <span class="division-badge">${divData.player_count} players${topCutBadge}</span>
     </div>
     <div class="pairings-grid" id="grid-${divKey}"></div>
   `;
@@ -98,15 +102,38 @@ function renderDivision(divKey, divData) {
 
 function renderPairingCard(pairing) {
   const { table, name_player: np, opp_player: op, id_analysis: ia } = pairing;
-  const isId = ia.recommendation === "ID";
 
   const card = document.createElement("div");
+
+  if (!ia) {
+    card.className = "pairing-card";
+    card.innerHTML = `
+      <div class="card-header">
+        <span class="table-num">Table ${table}</span>
+      </div>
+      <div class="matchup">
+        <div class="player-info name-side">
+          <div class="player-name" title="${esc(np.name)}">${esc(np.name)}</div>
+          <div class="player-record">${np.wins}-${np.losses}-${np.ties} &bull; ${np.points} pts</div>
+        </div>
+        <div class="vs">vs</div>
+        <div class="player-info opp-side">
+          <div class="player-name" title="${esc(op.name)}">${esc(op.name)}</div>
+          <div class="player-record">${op.wins}-${op.losses}-${op.ties} &bull; ${op.points} pts</div>
+        </div>
+      </div>
+    `;
+    return card;
+  }
+
+  const isId = ia.recommendation === "ID";
   card.className = `pairing-card${isId ? " recommend-id" : ""}`;
 
-  const pctId  = (ia.prob_top8_if_id  * 100).toFixed(1);
-  const pctWin = (ia.prob_top8_if_win * 100).toFixed(1);
+  const pctId  = (ia.prob_top_cut_if_id  * 100).toFixed(1);
+  const pctWin = (ia.prob_top_cut_if_win * 100).toFixed(1);
   const marginPct = (ia.margin * 100).toFixed(1);
   const marginDir = ia.id_beneficial ? `ID better by ${marginPct}%` : `Win better by ${marginPct}%`;
+  const topCutLabel = `Top ${ia.top_cut} probability`;
 
   card.innerHTML = `
     <div class="card-header">
@@ -141,7 +168,7 @@ function renderPairingCard(pairing) {
         </div>
         <span class="prob-pct">${pctId}%</span>
       </div>
-      <div class="margin-note">${marginDir} &bull; Top 8 probability</div>
+      <div class="margin-note">${marginDir} &bull; ${topCutLabel}</div>
     </div>
 
     <div class="sim-note">
