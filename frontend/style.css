@@ -67,6 +67,12 @@ button {
 button:hover { opacity: 0.85; }
 button:disabled { opacity: 0.45; cursor: default; }
 
+#rescrape-btn {
+  background: #7a4f00;
+  color: var(--yellow);
+  border: 1px solid #b87800;
+}
+
 .cache-info { color: var(--text-muted); font-size: 0.85rem; }
 
 /* Banner */

@@ -20,6 +20,7 @@ async function loadData(forceRefresh = false) {
   setLoading(true);
   setBanner("hidden");
   document.getElementById("refresh-btn").disabled = true;
+  document.getElementById("rescrape-btn").disabled = true;
 
   try {
     const url = `${API_BASE}/api/analysis${forceRefresh ? "?force_refresh=true" : ""}`;
@@ -51,6 +52,7 @@ async function loadData(forceRefresh = false) {
   } finally {
     setLoading(false);
     document.getElementById("refresh-btn").disabled = false;
+    document.getElementById("rescrape-btn").disabled = false;
     scheduleAutoRefresh();
   }
 }
