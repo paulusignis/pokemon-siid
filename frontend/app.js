@@ -175,9 +175,9 @@ function renderPairingCard(pairing) {
 
     <div class="sim-note">
       ${ia.simulation_method === "exhaustive"
-        ? `Exhaustive (${Math.pow(2, ia.other_matches_count)} scenarios)`
+        ? `Exhaustive (${Math.pow(3, ia.other_matches_count)} scenarios)`
         : `Monte Carlo (10,000 samples)`}
-      &bull; ${ia.other_matches_count} other ${ia.other_matches_count === 1 ? "match" : "matches"} in division
+      &bull; ${ia.other_matches_count + 1} ${ia.other_matches_count + 1 === 1 ? "table" : "tables"} in division
     </div>
   `;
 

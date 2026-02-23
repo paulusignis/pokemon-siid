@@ -10,11 +10,11 @@ For each pairing in a division, computes:
   - P(top cut | player IDs)  — player and opponent each get +1 point
   - P(top cut | player wins) — player gets +3 points, opponent gets +0
 
-Other matches in the same division are simulated 50/50 (name_player wins or
-opp_player wins; draws by other players are not modelled).
+Other matches in the same division are simulated with equal probability
+(1/3 each) for name_player win, draw, or opp_player win.
 
 Simulation strategy:
-  - n_other <= 10 → exhaustive enumeration of all 2^n outcomes
+  - n_other <= 10 → exhaustive enumeration of all 3^n outcomes
   - n_other >  10 → Monte Carlo with 10,000 samples
 
 Ranking uses dense rank on points only (resistance tiebreaker not available
@@ -122,29 +122,36 @@ def _apply_outcome(
         p = other_pairings[idx]
         if result == "name_wins":
             standings[p.name_player.name] += 3
-        else:
+        elif result == "draw":
+            standings[p.name_player.name] += 1
+            standings[p.opp_player.name] += 1
+        else:  # opp_wins
             standings[p.opp_player.name] += 3
 
     return standings
 
 
+_OUTCOME_CHOICES = ("name_wins", "draw", "opp_wins")
+
+
 def _enumerate_outcomes(n: int) -> list[dict]:
-    """Enumerate all 2^n win/loss outcomes for n other matches."""
+    """Enumerate all 3^n win/draw/loss outcomes for n other matches."""
     outcomes = []
-    for mask in range(1 << n):
+    for i in range(3 ** n):
         outcome = {}
-        for bit in range(n):
-            outcome[bit] = "name_wins" if (mask >> bit) & 1 else "opp_wins"
+        val = i
+        for j in range(n):
+            outcome[j] = _OUTCOME_CHOICES[val % 3]
+            val //= 3
         outcomes.append(outcome)
     return outcomes
 
 
 def _sample_outcomes(n: int, k: int) -> list[dict]:
-    """Sample k random 50/50 outcomes for n other matches."""
-    choices = ("name_wins", "opp_wins")
+    """Sample k random equal-probability win/draw/loss outcomes for n other matches."""
     outcomes = []
     for _ in range(k):
-        outcomes.append({i: random.choice(choices) for i in range(n)})
+        outcomes.append({i: random.choice(_OUTCOME_CHOICES) for i in range(n)})
     return outcomes
 
 
