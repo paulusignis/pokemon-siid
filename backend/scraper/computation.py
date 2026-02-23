@@ -1,9 +1,14 @@
 """
 ID (Intentional Draw) analysis for Pokemon TCG Swiss tournaments.
 
+Top-cut thresholds by division size:
+  - <= 8 players : no analysis (field is too small to matter)
+  - 9–20 players : compute P(top 4)
+  - >  20 players: compute P(top 8)
+
 For each pairing in a division, computes:
-  - P(top 8 | player IDs)  — player and opponent each get +1 point
-  - P(top 8 | player wins) — player gets +3 points, opponent gets +0
+  - P(top cut | player IDs)  — player and opponent each get +1 point
+  - P(top cut | player wins) — player gets +3 points, opponent gets +0
 
 Other matches in the same division are simulated 50/50 (name_player wins or
 opp_player wins; draws by other players are not modelled).
@@ -18,13 +23,14 @@ from pairings HTML alone — ties in points share the better rank).
 Recommendation threshold: recommend "ID" only if prob_id - prob_win >= 0.02.
 """
 
+from __future__ import annotations
+
 import logging
 import random
 from dataclasses import asdict, dataclass
 
 logger = logging.getLogger(__name__)
 
-TOP_N = 8
 MONTE_CARLO_SAMPLES = 10_000
 EXHAUSTIVE_THRESHOLD = 10
 RECOMMENDATION_MARGIN = 0.02
@@ -45,6 +51,18 @@ class Pairing:
     table_num: int
     name_player: Player
     opp_player: Player
+
+
+def _top_cut_for_count(player_count: int) -> int | None:
+    """
+    Return the top-cut threshold to compute probabilities for, based on
+    division size.  Returns None when the field is too small to matter.
+    """
+    if player_count <= 8:
+        return None
+    if player_count <= 20:
+        return 4
+    return 8
 
 
 def _group_by_division(pairings: list) -> dict[str, list]:
@@ -127,7 +145,7 @@ def _sample_outcomes(n: int, k: int) -> list[dict]:
     return outcomes
 
 
-def _analyze_pairing(target_pairing, other_pairings: list, base: dict[str, int]) -> dict:
+def _analyze_pairing(target_pairing, other_pairings: list, base: dict[str, int], top_n: int) -> dict:
     """Compute ID analysis for a single pairing within its division."""
     n = len(other_pairings)
 
@@ -139,31 +157,32 @@ def _analyze_pairing(target_pairing, other_pairings: list, base: dict[str, int])
         method = "monte_carlo"
 
     player_name = target_pairing.name_player.name
-    top8_id = 0
-    top8_win = 0
+    count_id = 0
+    count_win = 0
 
     for outcome in outcomes:
         standings_id = _apply_outcome(base, target_pairing, "id", other_pairings, outcome)
-        if _dense_rank(player_name, standings_id) <= TOP_N:
-            top8_id += 1
+        if _dense_rank(player_name, standings_id) <= top_n:
+            count_id += 1
 
         standings_win = _apply_outcome(base, target_pairing, "win", other_pairings, outcome)
-        if _dense_rank(player_name, standings_win) <= TOP_N:
-            top8_win += 1
+        if _dense_rank(player_name, standings_win) <= top_n:
+            count_win += 1
 
     total = len(outcomes)
-    prob_id = top8_id / total
-    prob_win = top8_win / total
+    prob_id = count_id / total
+    prob_win = count_win / total
     margin = prob_id - prob_win
     recommendation = "ID" if margin >= RECOMMENDATION_MARGIN else "WIN"
 
     return {
         "player": player_name,
+        "top_cut": top_n,
         "current_points": target_pairing.name_player.points,
         "points_if_id": target_pairing.name_player.points + 1,
         "points_if_win": target_pairing.name_player.points + 3,
-        "prob_top8_if_id": round(prob_id, 4),
-        "prob_top8_if_win": round(prob_win, 4),
+        "prob_top_cut_if_id": round(prob_id, 4),
+        "prob_top_cut_if_win": round(prob_win, 4),
         "recommendation": recommendation,
         "id_beneficial": margin > 0,
         "margin": round(abs(margin), 4),
@@ -192,11 +211,12 @@ def compute_id_analysis(pairings: list) -> dict:
     for division, div_pairings in divisions.items():
         base = _base_standings(div_pairings)
         player_count = len(base)
+        top_n = _top_cut_for_count(player_count)
         pairing_results = []
 
         for i, target in enumerate(div_pairings):
             other = [p for j, p in enumerate(div_pairings) if j != i]
-            analysis = _analyze_pairing(target, other, base)
+            analysis = _analyze_pairing(target, other, base, top_n) if top_n is not None else None
 
             pairing_results.append({
                 "table": target.table_num,
@@ -207,13 +227,13 @@ def compute_id_analysis(pairings: list) -> dict:
 
         result[division] = {
             "player_count": player_count,
+            "top_cut": top_n,
             "current_round_pairings": pairing_results,
         }
 
         logger.info(
-            "Division %s: %d players, %d pairings analysed (%s)",
-            division, player_count, len(div_pairings),
-            "exhaustive" if len(div_pairings) - 1 <= EXHAUSTIVE_THRESHOLD else "monte_carlo",
+            "Division %s: %d players, top_cut=%s, %d pairings analysed",
+            division, player_count, top_n, len(div_pairings),
         )
 
     return result
