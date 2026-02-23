@@ -241,7 +241,20 @@ def compute_id_analysis(pairings: list) -> dict:
         pairing_results = []
 
         for i, target in enumerate(div_pairings):
-            other = [p for j, p in enumerate(div_pairings) if j != i]
+            # Build other_pairings with one entry per unique table number,
+            # excluding the target's own table.  The page lists each match
+            # from both players' perspectives (two rows per table), so without
+            # this deduplication the same match would be simulated twice
+            # independently, allowing impossible double-win point gains.
+            seen_tables: set[int] = set()
+            other: list = []
+            for j, p in enumerate(div_pairings):
+                if j == i or p.table_num == target.table_num:
+                    continue
+                if p.table_num not in seen_tables:
+                    seen_tables.add(p.table_num)
+                    other.append(p)
+
             analysis = _analyze_pairing(target, other, base, top_n)
             analysis["division_table_count"] = division_table_count
 
