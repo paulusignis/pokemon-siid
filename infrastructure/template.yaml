@@ -414,28 +414,6 @@ Resources:
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
 
   # ----------------------------------------------------------
-  # EventBridge — scrape every 5 minutes
-  # ----------------------------------------------------------
-  ScraperScheduleRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub "pokemon-siid-scrape-schedule-${AWS::StackName}"
-      Description: "Trigger scraper Lambda every 5 minutes"
-      ScheduleExpression: "rate(5 minutes)"
-      State: ENABLED
-      Targets:
-        - Id: ScraperLambdaTarget
-          Arn: !GetAtt ScraperFunction.Arn
-
-  ScraperSchedulePermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt ScraperFunction.Arn
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt ScraperScheduleRule.Arn
-
-  # ----------------------------------------------------------
   # CodeBuild — build + deploy project
   # ----------------------------------------------------------
   BuildProject:
