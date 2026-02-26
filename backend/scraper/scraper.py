@@ -2,15 +2,21 @@
 Fetches and parses a Pokemon TCG tournament pairings page.
 
 Expected HTML table format:
-  Column 0: Table number (ignored)
-  Column 1: Name player  — "Kevin Clemente\xa0(3/0/1 (10) - MA)"
-  Column 2: blank (ignored)
-  Column 3: Opponent player — same format
+  Column 0: Table number
+  Column 1: Name player
+  Column 2: blank ("vs.")
+  Column 3: Opponent player
 
-Player cell format: "Name (W/L/T (points) - DIVISION)"
-  - Non-breaking space (\xa0) separates name from the record block
-  - Division: MA (Masters), SR (Seniors), JR (Juniors)
-  - Points: wins*3 + ties*1 (validated against reported value)
+Two supported player cell formats:
+
+  Old: "Kevin Clemente\xa0(3/0/1 (10) - MA)"
+    - Non-breaking space (\xa0) separates name from the record block
+    - Division suffix: MA (Masters), SR (Seniors), JR (Juniors)
+
+  New: "Kevin Clemente (3/0/1 (10))"
+    - No division suffix; division defaults to "MA"
+
+Points: wins*3 + ties*1 (validated against reported value)
 """
 
 from __future__ import annotations
@@ -26,6 +32,17 @@ logger = logging.getLogger(__name__)
 
 VALID_DIVISIONS = {"MA", "SR", "JR"}
 REQUEST_TIMEOUT = 15  # seconds
+DEFAULT_DIVISION = "MA"  # used when the page omits the division suffix
+
+# Old format: "Name (W/L/T (points) - DIVISION)"
+_RE_WITH_DIVISION = re.compile(
+    r"^(.+?)\s*\((\d+)/(\d+)/(\d+)\s*\((\d+)\)\s*-\s*(MA|SR|JR)\s*\)$",
+    re.IGNORECASE,
+)
+# New format: "Name (W/L/T (points))"
+_RE_NO_DIVISION = re.compile(
+    r"^(.+?)\s*\((\d+)/(\d+)/(\d+)\s*\((\d+)\)\s*\)$",
+)
 
 
 @dataclass
@@ -57,34 +74,38 @@ def parse_player_cell(cell_text: str) -> Player | None:
     Parse a single player cell string into a Player.
     Returns None for BYE, empty cells, or cells that cannot be parsed.
 
-    Actual format: "Kevin Clemente\xa0(3/0/1 (10) - MA)"
-    Pattern: Name (W/L/T (points) - DIVISION)
+    Supports two formats:
+      Old: "Kevin Clemente\xa0(3/0/1 (10) - MA)"  — division explicit
+      New: "Kevin Clemente (3/0/1 (10))"           — division defaults to MA
     """
     # Normalise: replace non-breaking spaces with regular spaces, then strip
     text = cell_text.replace("\xa0", " ").strip()
     if not text or text.upper() == "BYE":
         return None
 
-    # Format: "Name (W/L/T (points) - DIVISION)"
-    m = re.match(
-        r"^(.+?)\s*\((\d+)/(\d+)/(\d+)\s*\((\d+)\)\s*-\s*(MA|SR|JR)\s*\)$",
-        text,
-        re.IGNORECASE,
-    )
-    if not m:
-        logger.warning("Cannot parse player cell, skipping: %r", text)
-        return None
+    # Try old format first (includes division), then new format (no division)
+    m = _RE_WITH_DIVISION.match(text)
+    if m:
+        division = m.group(6).upper()
+        groups = m.group(1, 2, 3, 4, 5)
+    else:
+        m = _RE_NO_DIVISION.match(text)
+        if not m:
+            logger.warning("Cannot parse player cell, skipping: %r", text)
+            return None
+        division = DEFAULT_DIVISION
+        logger.debug("No division in cell %r; defaulting to %s", text, DEFAULT_DIVISION)
+        groups = m.group(1, 2, 3, 4, 5)
 
     try:
-        name = m.group(1).strip()
+        name = groups[0].strip()
         if not name:
             return None
 
-        wins   = int(m.group(2))
-        losses = int(m.group(3))
-        ties   = int(m.group(4))
-        points = int(m.group(5))
-        division = m.group(6).upper()
+        wins   = int(groups[1])
+        losses = int(groups[2])
+        ties   = int(groups[3])
+        points = int(groups[4])
 
         # Validate computed vs reported points
         expected_points = wins * 3 + ties

@@ -57,8 +57,29 @@ class TestParsePlayerCell:
     def test_malformed_record_skipped(self):
         assert parse_player_cell("Frank\xa0(3/0 (9) - MA)") is None
 
-    def test_too_few_parts_skipped(self):
-        assert parse_player_cell("Grace\xa0(3/0/0 (9))") is None
+    def test_new_format_no_division(self):
+        # New format omits division — should parse and default to MA
+        p = parse_player_cell("Grace (3/0/0 (9))")
+        assert p is not None
+        assert p.name == "Grace"
+        assert p.wins == 3
+        assert p.losses == 0
+        assert p.ties == 0
+        assert p.points == 9
+        assert p.division == "MA"
+
+    def test_new_format_with_nbsp(self):
+        p = parse_player_cell("Kevin Clemente\xa0(3/0/1 (10))")
+        assert p is not None
+        assert p.name == "Kevin Clemente"
+        assert p.wins == 3
+        assert p.ties == 1
+        assert p.points == 10
+        assert p.division == "MA"
+
+    def test_truly_malformed_skipped(self):
+        # Missing the inner (points) wrapper — neither format matches
+        assert parse_player_cell("Grace\xa0(3/0/0 - MA)") is None
 
     def test_lowercase_division_normalised(self):
         p = parse_player_cell("Hank\xa0(1/0/0 (3) - ma)")
@@ -133,6 +154,27 @@ MULTI_DIVISION_TABLE = """
 """
 
 
+NEW_FORMAT_TABLE = """
+<html><body>
+<table>
+  <tr><th>Table</th><th>Name</th><th></th><th>Opponent</th></tr>
+  <tr>
+    <td>1</td>
+    <td>Alice Chen (5/1/0 (15))</td>
+    <td>vs.</td>
+    <td>Bob Martinez (5/1/0 (15))</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>Carol Smith (4/2/0 (12))</td>
+    <td>vs.</td>
+    <td>Dave Jones (4/2/0 (12))</td>
+  </tr>
+</table>
+</body></html>
+"""
+
+
 class TestParsePairings:
     def test_parses_normal_rows(self):
         pairings = parse_pairings(SIMPLE_TABLE)
@@ -157,6 +199,13 @@ class TestParsePairings:
         pairings = parse_pairings(MULTI_DIVISION_TABLE)
         divisions = {p.name_player.division for p in pairings}
         assert divisions == {"MA", "SR", "JR"}
+
+    def test_new_format_parses(self):
+        pairings = parse_pairings(NEW_FORMAT_TABLE)
+        assert len(pairings) == 2
+        assert pairings[0].name_player.name == "Alice Chen"
+        assert pairings[0].name_player.division == "MA"
+        assert pairings[1].opp_player.name == "Dave Jones"
 
     def test_empty_html(self):
         pairings = parse_pairings("<html><body></body></html>")
